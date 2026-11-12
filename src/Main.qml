@@ -751,6 +751,18 @@ ApplicationWindow {
                     ctx.moveTo(13.5, 7.5);
                     ctx.lineTo(16.5, 10.5);
                     ctx.stroke();
+                } else if (iconButton.iconName === "view") {
+                    // An eye.
+                    ctx.beginPath();
+                    ctx.moveTo(3, 12);
+                    ctx.quadraticCurveTo(12, 3, 21, 12);
+                    ctx.quadraticCurveTo(12, 21, 3, 12);
+                    ctx.closePath();
+                    ctx.stroke();
+
+                    ctx.beginPath();
+                    ctx.arc(12, 12, 3, 0, 2 * Math.PI);
+                    ctx.fill();
                 }
             }
 
@@ -917,6 +929,15 @@ ApplicationWindow {
                 Layout.preferredHeight: 44
                 iconName: "edit"
                 tipText: qsTr("Edit (E)")
+                onClicked: win.toggleViewMode()
+            }
+
+            IconButton {
+                visible: !win.viewMode
+                Layout.preferredWidth: 44
+                Layout.preferredHeight: 44
+                iconName: "view"
+                tipText: qsTr("View (E)")
                 onClicked: win.toggleViewMode()
             }
 
