@@ -75,5 +75,12 @@
   "Video has a zero or invalid duration.": "Video has a zero or invalid duration.",
   "Your edit hasn't been exported. Quit anyway?": "Your edit hasn't been exported. Quit anyway?",
   "Zoom to the clip": "Zoom to the clip",
-  "zoomed": "zoomed"
+  "zoomed": "zoomed",
+  "Edit (E)": "Edit (E)",
+  "Play / pause (or click the video)": "Play / pause (or click the video)",
+  "Scrub along the timeline": "Scrub along the timeline",
+  "Jump to 0%–90% of the video": "Jump to 0%–90% of the video",
+  "Full screen (or double-click)": "Full screen (or double-click)",
+  "Switch to edit mode": "Switch to edit mode",
+  "Switch to view mode": "Switch to view mode"
 }

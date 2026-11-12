@@ -46,7 +46,7 @@ public:
     // Start over with a video. Probing runs off the UI thread: false means
     // refused outright (busy, or not an absolute local path); the outcome
     // itself arrives via infoChanged or loadError.
-    bool load(const QUrl &url);
+    Q_INVOKABLE bool load(const QUrl &url);
     // Add a video as a clip after the one under t, sequence seconds. Like
     // load(), the probe finishes in the background.
     bool addVideo(const QUrl &url, double t);

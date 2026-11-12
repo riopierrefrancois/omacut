@@ -39,7 +39,28 @@ ApplicationWindow {
     // a probe is about to replace the timeline, or a handle is dragged.
     // A confirmation or the shortcuts overlay is up, and has the keyboard.
     readonly property bool overlayOpen: quitConfirmVisible || openConfirmVisible || helpVisible
-    readonly property bool editing: hasVideo && timeline.duration > 0 && !overlayOpen && !backend.probing && !editBar.interacting
+    // View mode is a plain player: the edit as one filmstrip to scrub
+    // through, and nothing that changes it. E switches between the two;
+    // `omacut --view` starts in it.
+    property bool viewMode: false
+    // The bar in use is held down, so playback must not move the playhead.
+    readonly property bool scrubbing: viewMode ? viewBar.interacting : editBar.interacting
+    // Moving around the video; editing also changes it, so not in view mode.
+    readonly property bool navigating: hasVideo && timeline.duration > 0 && !overlayOpen && !backend.probing && !scrubbing
+    readonly property bool editing: navigating && !viewMode
+    readonly property bool fullScreen: win.visibility === Window.FullScreen
+    function toggleFullScreen() {
+        win.visibility = fullScreen ? Window.Windowed : Window.FullScreen;
+    }
+    function toggleViewMode() {
+        editBar.zoomed = false;
+        viewMode = !viewMode;
+        if (!viewMode && fullScreen)
+            toggleFullScreen();
+    }
+    // Scrubbing pauses, silently, and playback carries on from wherever the
+    // drag let go if it was playing before.
+    property bool playAfterScrub: false
 
     Material.theme: Material.Dark
     Material.accent: win.accent
@@ -77,7 +98,11 @@ ApplicationWindow {
     // Probing happens in the background, in drop order; a file that won't
     // open is skipped and the rest go on. When some made it, one notice
     // counts the skipped, since each error replaces the last.
+    // In view mode a drop opens the first video in place of this one, as a
+    // player would, unless that would throw away an edit.
     function dropVideos(urls) {
+        if (viewMode && hasVideo && !unexported)
+            return backend.load(urls[0]);
         return backend.addVideos(urls, editBar.playheadSec);
     }
     function exportVideo() {
@@ -190,7 +215,7 @@ ApplicationWindow {
             required property int index
             sequence: index.toString()
             context: Qt.ApplicationShortcut
-            enabled: win.editing
+            enabled: win.navigating
             // Held down, repeats would keep seeking to the same spot.
             autoRepeat: false
             onActivated: seekTo(timeline.duration * index / 10)
@@ -207,28 +232,28 @@ ApplicationWindow {
     Shortcut {
         sequence: "Left"
         context: Qt.ApplicationShortcut
-        enabled: win.editing
+        enabled: win.navigating
         onActivated: seekTo(editBar.playheadSec - 1)
     }
 
     Shortcut {
         sequence: "Right"
         context: Qt.ApplicationShortcut
-        enabled: win.editing
+        enabled: win.navigating
         onActivated: seekTo(editBar.playheadSec + 1)
     }
 
     Shortcut {
         sequence: "Shift+Left"
         context: Qt.ApplicationShortcut
-        enabled: win.editing
+        enabled: win.navigating
         onActivated: seekTo(editBar.playheadSec - 5)
     }
 
     Shortcut {
         sequence: "Shift+Right"
         context: Qt.ApplicationShortcut
-        enabled: win.editing
+        enabled: win.navigating
         onActivated: seekTo(editBar.playheadSec + 5)
     }
 
@@ -255,14 +280,14 @@ ApplicationWindow {
     Shortcut {
         sequence: "Alt+Left"
         context: Qt.ApplicationShortcut
-        enabled: win.editing
+        enabled: win.navigating
         onActivated: altStep(-1)
     }
 
     Shortcut {
         sequence: "Alt+Right"
         context: Qt.ApplicationShortcut
-        enabled: win.editing
+        enabled: win.navigating
         onActivated: altStep(1)
     }
 
@@ -366,8 +391,22 @@ ApplicationWindow {
         sequence: "F"
         context: Qt.ApplicationShortcut
         autoRepeat: false
-        enabled: win.editing && !backend.busy
-        onActivated: backend.saveFrame(editBar.playheadSec)
+        // A player's F is full screen; the editor's saves the frame.
+        enabled: win.viewMode ? win.hasVideo && !win.overlayOpen : win.editing && !backend.busy
+        onActivated: {
+            if (win.viewMode)
+                win.toggleFullScreen();
+            else
+                backend.saveFrame(editBar.playheadSec);
+        }
+    }
+
+    Shortcut {
+        sequence: "E"
+        context: Qt.ApplicationShortcut
+        autoRepeat: false
+        enabled: !win.overlayOpen && !win.scrubbing
+        onActivated: win.toggleViewMode()
     }
 
     Shortcut {
@@ -387,7 +426,7 @@ ApplicationWindow {
     Shortcut {
         sequence: "Ctrl+S"
         context: Qt.ApplicationShortcut
-        enabled: win.hasVideo && timeline.duration > 0 && !backend.busy && !win.helpVisible && !win.openConfirmVisible
+        enabled: !win.viewMode && win.hasVideo && timeline.duration > 0 && !backend.busy && !win.helpVisible && !win.openConfirmVisible
         onActivated: {
             win.quitConfirmVisible = false;
             exportVideo();
@@ -436,6 +475,8 @@ ApplicationWindow {
                 win.openConfirmVisible = false;
             else if (win.helpVisible)
                 win.helpVisible = false;
+            else if (win.fullScreen)
+                win.toggleFullScreen();
         }
     }
 
@@ -567,7 +608,7 @@ ApplicationWindow {
                 clip += 1;
                 c = next;
             }
-            if (!editBar.interacting)
+            if (!win.scrubbing)
                 editBar.playheadSec = c.start + Math.max(0, Math.min(t, c.out) - c.in);
         }
     }
@@ -581,7 +622,7 @@ ApplicationWindow {
         }
     }
     function resync() {
-        if (!hasVideo || timeline.duration <= 0 || editBar.interacting)
+        if (!hasVideo || timeline.duration <= 0 || win.scrubbing)
             return;
         var t = Math.min(editBar.playheadSec, timeline.duration);
         var i = timeline.clipAt(t), clip = timeline.clips[i];
@@ -695,6 +736,21 @@ ApplicationWindow {
                     ctx.moveTo(6, 20);
                     ctx.lineTo(18, 20);
                     ctx.stroke();
+                } else if (iconButton.iconName === "edit") {
+                    // A pencil.
+                    ctx.beginPath();
+                    ctx.moveTo(5, 19);
+                    ctx.lineTo(6, 15);
+                    ctx.lineTo(15.5, 5.5);
+                    ctx.lineTo(18.5, 8.5);
+                    ctx.lineTo(9, 18);
+                    ctx.closePath();
+                    ctx.stroke();
+
+                    ctx.beginPath();
+                    ctx.moveTo(13.5, 7.5);
+                    ctx.lineTo(16.5, 10.5);
+                    ctx.stroke();
                 }
             }
 
@@ -746,6 +802,14 @@ ApplicationWindow {
                 enabled: !win.hasVideo
                 cursorShape: Qt.PointingHandCursor
                 onClicked: openVideo()
+            }
+
+            // In view mode, as in any player: click to play or pause,
+            // double-click for full screen.
+            TapHandler {
+                enabled: win.viewMode && win.hasVideo && !win.overlayOpen
+                onSingleTapped: win.togglePlay()
+                onDoubleTapped: win.toggleFullScreen()
             }
 
             Button {
@@ -805,9 +869,11 @@ ApplicationWindow {
                 onClicked: togglePlay()
             }
 
+            // Hidden in view mode, but still where the playhead lives.
             EditBar {
                 id: editBar
                 objectName: "editBar"
+                visible: !win.viewMode
                 Layout.fillWidth: true
                 // Frozen while a probe is in flight: it is about to replace
                 // or extend the timeline the bar is showing.
@@ -824,7 +890,38 @@ ApplicationWindow {
                 }
             }
 
+            ViewBar {
+                id: viewBar
+                objectName: "viewBar"
+                visible: win.viewMode
+                Layout.fillWidth: true
+                enabled: !backend.probing
+                accent: win.accent
+                playheadSec: editBar.playheadSec
+                onScrubStarted: {
+                    win.playAfterScrub = win.playing() || player.pendingPlay;
+                    player.pause();
+                    player.pendingPlay = false;
+                }
+                onScrub: (seconds) => seekTo(seconds)
+                onScrubEnded: {
+                    if (win.playAfterScrub)
+                        win.togglePlay();
+                    win.playAfterScrub = false;
+                }
+            }
+
             IconButton {
+                visible: win.viewMode
+                Layout.preferredWidth: 44
+                Layout.preferredHeight: 44
+                iconName: "edit"
+                tipText: qsTr("Edit (E)")
+                onClicked: win.toggleViewMode()
+            }
+
+            IconButton {
+                visible: !win.viewMode
                 Layout.preferredWidth: 44
                 Layout.preferredHeight: 44
                 iconName: "plus"
@@ -834,6 +931,7 @@ ApplicationWindow {
             }
 
             IconButton {
+                visible: !win.viewMode
                 Layout.preferredWidth: 44
                 Layout.preferredHeight: 44
                 iconName: "download"
@@ -864,7 +962,22 @@ ApplicationWindow {
                 elide: Text.ElideMiddle
             }
 
+            // In view mode, which video this is, so windows side by side tell apart.
             Label {
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.max(0, parent.width / 2 - timeLabel.implicitWidth / 2 - 16)
+                visible: win.viewMode && win.statusText === ""
+                textFormat: Text.PlainText
+                text: win.fileName(backend.source)
+                color: "#d6d6da"
+                font.pixelSize: 13
+                font.weight: Font.DemiBold
+                elide: Text.ElideMiddle
+            }
+
+            Label {
+                id: timeLabel
                 anchors.centerIn: parent
                 visible: win.statusText === "" && timeline.duration > 0 && !editBar.trimming
                 textFormat: Text.StyledText
@@ -908,7 +1021,7 @@ ApplicationWindow {
             radius: theme.radius
             Label {
                 anchors.centerIn: parent
-                text: win.hasVideo ? qsTr("Drop to add to the edit") : qsTr("Drop a video to open it")
+                text: win.hasVideo && !(win.viewMode && !win.unexported) ? qsTr("Drop to add to the edit") : qsTr("Drop a video to open it")
                 font.pixelSize: 20
                 color: win.accent
             }
@@ -975,7 +1088,19 @@ ApplicationWindow {
                 }
 
                 Repeater {
-                    model: [
+                    model: win.viewMode ? [
+                        { keys: "Space", action: qsTr("Play / pause (or click the video)") },
+                        { keys: "Drag", action: qsTr("Scrub along the timeline") },
+                        { keys: "0–9", action: qsTr("Jump to 0%–90% of the video") },
+                        { keys: "← / →", action: qsTr("Move playhead 1s") },
+                        { keys: "Shift ← / →", action: qsTr("Move playhead 5s") },
+                        { keys: "Alt ← / →", action: qsTr("One frame; hold to move 0.2s") },
+                        { keys: "F", action: qsTr("Full screen (or double-click)") },
+                        { keys: "E", action: qsTr("Switch to edit mode") },
+                        { keys: "Ctrl O", action: qsTr("Open a video") },
+                        { keys: "Q", action: qsTr("Quit") },
+                        { keys: "?", action: qsTr("Show these shortcuts") }
+                    ] : [
                         { keys: "Space", action: qsTr("Play / pause") },
                         { keys: "0–9", action: qsTr("Jump to 0%–90% of the edit") },
                         { keys: "← / →", action: qsTr("Move playhead 1s") },
@@ -993,6 +1118,7 @@ ApplicationWindow {
                         { keys: "Ctrl O", action: qsTr("Open a video") },
                         { keys: "Ctrl Shift O", action: qsTr("Add a video after this clip") },
                         { keys: "Ctrl S", action: qsTr("Export") },
+                        { keys: "E", action: qsTr("Switch to view mode") },
                         { keys: "Q", action: qsTr("Quit") },
                         { keys: "?", action: qsTr("Show these shortcuts") }
                     ]

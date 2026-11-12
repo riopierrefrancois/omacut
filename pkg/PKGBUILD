@@ -1,0 +1,25 @@
+# Local build of omacut with PF's view mode (branch pf/view-mode), over the stock package.
+pkgname=omacut
+pkgver=0.7.2.pf1
+pkgrel=1
+pkgdesc='Dead-simple video length trimmer built with Qt Quick and ffmpeg (with a view mode)'
+arch=('x86_64' 'aarch64')
+url='https://github.com/omacom/omacut'
+license=('MIT')
+options=('!debug')
+depends=('ffmpeg' 'hicolor-icon-theme' 'qt6-base' 'qt6-declarative' 'qt6-multimedia' 'xdg-desktop-portal')
+makedepends=('cmake')
+
+build() {
+  cmake -S "$startdir/.." -B build -DCMAKE_BUILD_TYPE=Release
+  cmake --build build --target omacut -j"$(nproc)"
+}
+
+package() {
+  local src="$startdir/.."
+  install -Dm755 build/omacut "$pkgdir/usr/bin/omacut"
+  install -Dm644 "$src/pkgbuild/omacut.desktop" "$pkgdir/usr/share/applications/omacut.desktop"
+  install -Dm644 "$src/pkgbuild/omacut-view.desktop" "$pkgdir/usr/share/applications/omacut-view.desktop"
+  install -Dm644 "$src/pkgbuild/omacut.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/omacut.svg"
+  install -Dm644 "$src/LICENSE" "$pkgdir/usr/share/licenses/omacut/LICENSE"
+}

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Omacut Player
+GenericName=Video Player
+Comment=Watch a video and scrub through it
+Exec=omacut --view %f
+Icon=omacut
+Terminal=false
+Categories=AudioVideo;Video;Player;
+MimeType=video/mp4;video/x-matroska;video/quicktime;video/webm;video/x-msvideo;video/mpeg;video/x-m4v;video/ogg;video/3gpp;video/mp2t;video/x-flv;video/x-ms-wmv;
+Keywords=video;player;watch;view;
+StartupWMClass=omacut

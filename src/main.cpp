@@ -64,10 +64,22 @@ int main(int argc, char *argv[]) {
     if (engine.rootObjects().isEmpty())
         return -1;
 
-    // Optionally open a file passed on the command line.
+    // `omacut [--view] [file]`: --view starts as a plain player (the
+    // default video player's desktop entry uses it), and a file opens.
+    QString file;
+    bool view = false;
     const QStringList args = app.arguments();
-    if (args.size() > 1)
-        backend.load(QUrl::fromLocalFile(QFileInfo(args.at(1)).absoluteFilePath()));
+    for (int i = 1; i < args.size(); ++i) {
+        if (args.at(i) == QLatin1String("--view"))
+            view = true;
+        else if (file.isEmpty())
+            file = args.at(i);
+    }
+    if (view)
+        engine.rootObjects().first()->setProperty("viewMode", true);
+    if (!file.isEmpty())
+        backend.load(file.contains(QLatin1String("://")) ? QUrl(file)
+                                                         : QUrl::fromLocalFile(QFileInfo(file).absoluteFilePath()));
 
     return app.exec();
 }

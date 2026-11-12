@@ -178,6 +178,7 @@ public:
     Q_INVOKABLE void saveFrame(double) {}
     Q_INVOKABLE void stepFrame(double t, int direction) { emit frameStepped(t, t + direction * 0.04); }
     Q_INVOKABLE bool addVideos(const QVariantList &, double) { return false; }
+    Q_INVOKABLE bool load(const QUrl &) { return false; }
 
     void announceInfo() {
         timeline.reset(m_duration);
