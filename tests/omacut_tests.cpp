@@ -143,6 +143,10 @@ class ShortcutBackend : public QObject {
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(bool probing READ probing NOTIFY busyChanged)
     Q_PROPERTY(bool exporting READ exporting NOTIFY busyChanged)
+    Q_PROPERTY(bool sharing READ sharing NOTIFY sharingChanged)
+    Q_PROPERTY(QString shareStage READ shareStage NOTIFY shareProgressChanged)
+    Q_PROPERTY(double sharePercent READ sharePercent NOTIFY shareProgressChanged)
+    Q_PROPERTY(QString lastExport READ lastExport NOTIFY lastExportChanged)
     Q_PROPERTY(QString status READ status NOTIFY statusChanged)
     Q_PROPERTY(QObject *timeline READ timelineObject CONSTANT)
 
@@ -163,6 +167,10 @@ public:
         m_exporting = exporting;
         emit busyChanged();
     }
+    bool sharing() const { return false; }
+    QString shareStage() const { return {}; }
+    double sharePercent() const { return 0.0; }
+    QString lastExport() const { return m_lastExport; }
     QString status() const { return {}; }
     QObject *timelineObject() { return &timeline; }
 
@@ -175,6 +183,7 @@ public:
         ++exportCount;
         exportedClips = timeline.clips();
     }
+    Q_INVOKABLE void share(const QString &, const QString &) {}
     Q_INVOKABLE void saveFrame(double) {}
     Q_INVOKABLE void stepFrame(double t, int direction) { emit frameStepped(t, t + direction * 0.04); }
     Q_INVOKABLE bool addVideos(const QVariantList &, double) { return false; }
@@ -186,7 +195,9 @@ public:
     }
     void announceExportDone() {
         timeline.markExported(exportedClips);
-        emit exportDone(QStringLiteral("/tmp/exported.mp4"));
+        m_lastExport = QStringLiteral("/tmp/exported.mp4");
+        emit lastExportChanged();
+        emit exportDone(m_lastExport);
     }
     // What choosing a video of this length in the add dialog does.
     void addVideoOfLength(double duration, double t) {
@@ -207,6 +218,11 @@ signals:
     void videosChanged();
     void busyChanged();
     void statusChanged();
+    void sharingChanged();
+    void shareProgressChanged();
+    void lastExportChanged();
+    void shareDone(const QString &link);
+    void shareFailed(const QString &message);
     void exportDone(const QString &path);
     void exportFailed(const QString &message);
     void frameStepped(double from, double to);
@@ -222,6 +238,7 @@ private:
     double m_duration;
     QVariantList m_videos;
     bool m_exporting = false;
+    QString m_lastExport;
 };
 
 // All of the first video: what a freshly loaded one edits.
@@ -341,6 +358,8 @@ private slots:
     void exportDialogDelegatesSuggestedUrl();
     void suggestedExportUrlAlwaysUsesMp4();
     void exportClipWritesMp4();
+    void shareRunsOmaShare_data();
+    void shareRunsOmaShare();
     void frameStepsFollowPresentationTimes();
     void frameStepFailuresHaveTheirOwnNotice();
     void saveFrameWritesPngBesideTheSource();
@@ -1037,6 +1056,78 @@ void BackendTests::saveFrameSquaresStretchedPixels() {
     QCOMPARE(QImage(savedSpy.first().at(0).toString()).size(), QSize(53, 30));
 }
 
+void BackendTests::shareRunsOmaShare_data() {
+    QTest::addColumn<QByteArray>("response");
+    QTest::addColumn<QString>("link");
+    QTest::addColumn<QString>("failure");
+
+    QTest::newRow("done") << QByteArray(R"({"event":"done","link":"https://share.example.com/s/video"})")
+                          << QStringLiteral("https://share.example.com/s/video") << QString();
+    QTest::newRow("error") << QByteArray(R"({"event":"error","error":"Not signed in. Run: omashare login"})")
+                           << QString() << QStringLiteral("Sign in to OmaShare first: run omashare login in a terminal.");
+    QTest::newRow("stderr") << QByteArray()
+                            << QString() << QStringLiteral("Upload failed");
+}
+
+void BackendTests::shareRunsOmaShare() {
+    QFETCH(QByteArray, response);
+    QFETCH(QString, link);
+    QFETCH(QString, failure);
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    QFile script(dir.filePath(QStringLiteral("fake omashare")));
+    QVERIFY(script.open(QIODevice::WriteOnly));
+    script.write(R"(#!/bin/sh
+if [ "$#" -ne 4 ] || [ "$1" != "--json" ] || [ "$2" != "--name" ] ||
+   [ "$3" != "My title" ] || [ "$4" != "/tmp/my video.mp4" ]; then
+    echo "Wrong arguments" >&2
+    exit 1
+fi
+printf '%s' '{"event":"progress","stage":"preparing",'
+printf '%s\n' '"percent":37.5}'
+printf '%s\n' '{"event":"progress","stage":"uploading","percent":81.2}'
+)");
+    if (response.isEmpty())
+        script.write("echo 'Upload failed' >&2\n");
+    else
+        script.write("printf '%s' '" + response + "'\n");
+    script.write(failure.isEmpty() ? "exit 0\n" : "exit 1\n");
+    script.close();
+    QVERIFY(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+
+    const EnvVarGuard override("OMACUT_OMASHARE");
+    qputenv("OMACUT_OMASHARE", QFile::encodeName(script.fileName()));
+    ThumbProvider provider;
+    Backend backend(&provider, new FakeFilePicker);
+    QSignalSpy sharing(&backend, &Backend::sharingChanged);
+    QSignalSpy done(&backend, &Backend::shareDone);
+    QSignalSpy failed(&backend, &Backend::shareFailed);
+    QList<QPair<QString, double>> progress;
+    connect(&backend, &Backend::shareProgressChanged, this, [&] {
+        progress.append({backend.shareStage(), backend.sharePercent()});
+    });
+
+    QVERIFY(!backend.sharing());
+    QCOMPARE(backend.shareStage(), QString());
+    QCOMPARE(backend.sharePercent(), 0.0);
+    backend.share(QStringLiteral("/tmp/my video.mp4"), QStringLiteral("My title"));
+    QVERIFY(backend.sharing());
+    QVERIFY(!backend.busy());
+    QVERIFY(!backend.exporting());
+    backend.share(QStringLiteral("/tmp/ignored.mp4"), QStringLiteral("Ignored"));
+    QTRY_COMPARE(done.size() + failed.size(), 1);
+    QVERIFY(!backend.sharing());
+    QCOMPARE(sharing.size(), 2);
+    const QList<QPair<QString, double>> expected = {{QStringLiteral("preparing"), 37.5},
+                                                   {QStringLiteral("uploading"), 81.2}};
+    QCOMPARE(progress, expected);
+    if (failure.isEmpty())
+        QCOMPARE(done.first().first().toString(), link);
+    else
+        QCOMPARE(failed.first().first().toString(), failure);
+}
+
 void BackendTests::exportClipWritesMp4() {
     ThumbProvider provider;
     auto *picker = new FakeFilePicker;
@@ -1067,6 +1158,7 @@ void BackendTests::exportClipWritesMp4() {
              qPrintable(statuses.join(QStringLiteral(" | "))));
     QCOMPARE(doneSpy.count(), 1);
     QCOMPARE(doneSpy.first().at(0).toString(), mp4Path);
+    QCOMPARE(backend.lastExport(), mp4Path);
     QVERIFY(!backend.busy());
     QVERIFY(QFileInfo::exists(mp4Path));
     QVERIFY(!QFileInfo::exists(selectedPath));

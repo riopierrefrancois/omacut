@@ -4,8 +4,11 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QPointer>
 #include <QProcess>
+#include <QStandardPaths>
 #include <QTemporaryFile>
 #include <QThreadPool>
 #include <QTimer>
@@ -50,6 +53,11 @@ Backend::Backend(ThumbProvider *provider, FilePicker *filePicker, QObject *paren
 }
 
 Backend::~Backend() {
+    if (m_shareProcess) {
+        m_shareProcess->disconnect(this);
+        m_shareProcess->kill();
+    }
+
     // Quit mid-save: the ffmpeg writing it dies with us, so its file goes too.
     if (!m_framePart.isEmpty())
         QFile::remove(m_framePart);
@@ -141,7 +149,7 @@ void Backend::applyProbe(const PendingVideo &pending, const ffmpeg::VideoInfo &i
         // An export that rewrote its own source reports done either way;
         // the reopen failing is the part the user needs explained.
         if (pending.exportReload) {
-            emit exportDone(pending.path);
+            finishExport(pending.path);
             emit exportReopenFailed();
         } else {
             emit loadError(info.error);
@@ -181,7 +189,7 @@ void Backend::applyProbe(const PendingVideo &pending, const ffmpeg::VideoInfo &i
         // done: reporting earlier let the reload erase the "Saved" notice
         // and reset the timeline under edits made in between.
         if (pending.exportReload)
-            emit exportDone(pending.path);
+            finishExport(pending.path);
     }
 
     m_probing = false;
@@ -565,7 +573,7 @@ void Backend::exportClips(const QUrl &dst, const edit::Clips &clips, int scaleHe
                 // result says the saved file couldn't be reopened.
                 if (!isVideoPath(outPath)) {
                     m_timeline.markExported(clips);
-                    emit exportDone(outPath);
+                    finishExport(outPath);
                 } else {
                     // exportDone waits for the reopen probe to settle.
                     PendingVideo pending;
@@ -574,7 +582,7 @@ void Backend::exportClips(const QUrl &dst, const edit::Clips &clips, int scaleHe
                     if (checkedPath(pending.url, &pending.path))
                         enqueueVideo(pending);
                     else
-                        emit exportDone(outPath);
+                        finishExport(outPath);
                 }
             });
     connect(proc, &QProcess::errorOccurred, this,
@@ -594,4 +602,97 @@ void Backend::failExport(const QString &tmpPath, const QString &message) {
     setStatus(QString());
     QFile::remove(tmpPath);
     emit exportFailed(message);
+}
+
+void Backend::finishExport(const QString &path) {
+    const QString absolutePath = QFileInfo(path).absoluteFilePath();
+    if (m_lastExport != absolutePath) {
+        m_lastExport = absolutePath;
+        emit lastExportChanged();
+    }
+    emit exportDone(absolutePath);
+}
+
+void Backend::setShareProgress(const QString &stage, double percent) {
+    if (m_shareStage == stage && m_sharePercent == percent)
+        return;
+    m_shareStage = stage;
+    m_sharePercent = percent;
+    emit shareProgressChanged();
+}
+
+void Backend::share(const QString &path, const QString &title) {
+    if (sharing())
+        return;
+
+    const QString program = qEnvironmentVariable("OMACUT_OMASHARE",
+        QStandardPaths::findExecutable(QStringLiteral("omashare")));
+    if (program.isEmpty()) {
+        emit shareFailed(tr("Install omashare to share links."));
+        return;
+    }
+
+    struct ShareOutput {
+        QByteArray buffer;
+        QString terminalEvent;
+        QString link;
+        QString error;
+    };
+    const auto output = std::make_shared<ShareOutput>();
+    auto *proc = new QProcess(this);
+    m_shareProcess = proc;
+
+    const auto readOutput = [this, proc, output](bool finalRead) {
+        output->buffer.append(proc->readAllStandardOutput());
+        if (finalRead && !output->buffer.isEmpty())
+            output->buffer.append('\n');
+        int newline;
+        while ((newline = output->buffer.indexOf('\n')) >= 0) {
+            const QByteArray line = output->buffer.left(newline).trimmed();
+            output->buffer.remove(0, newline + 1);
+            if (!output->terminalEvent.isEmpty())
+                continue;
+            const QJsonObject event = QJsonDocument::fromJson(line).object();
+            const QString type = event.value(QStringLiteral("event")).toString();
+            if (type == QStringLiteral("progress")) {
+                const QString stage = event.value(QStringLiteral("stage")).toString();
+                if (stage == QStringLiteral("preparing") || stage == QStringLiteral("uploading"))
+                    setShareProgress(stage, qBound(0.0, event.value(QStringLiteral("percent")).toDouble(), 100.0));
+            } else if (type == QStringLiteral("done") || type == QStringLiteral("error")) {
+                output->terminalEvent = type;
+                output->link = event.value(QStringLiteral("link")).toString();
+                output->error = event.value(QStringLiteral("error")).toString().trimmed();
+            }
+        }
+    };
+    const auto finish = [this, proc, output] {
+        proc->deleteLater();
+        m_shareProcess = nullptr;
+        emit sharingChanged();
+
+        if (!output->link.isEmpty() && output->terminalEvent == QStringLiteral("done")) {
+            emit shareDone(output->link);
+            return;
+        }
+        QString message = output->error;
+        if (message.contains(QStringLiteral("Not signed in"), Qt::CaseInsensitive))
+            message = tr("Sign in to OmaShare first: run omashare login in a terminal.");
+        emit shareFailed(message.isEmpty() ? tr("Couldn't share the video.") : message);
+    };
+
+    connect(proc, &QProcess::readyReadStandardOutput, this, [readOutput] { readOutput(false); });
+    connect(proc, &QProcess::finished, this, [proc, output, readOutput, finish](int code, QProcess::ExitStatus status) {
+        readOutput(true);
+        if (output->error.isEmpty() && (code != 0 || status != QProcess::NormalExit))
+            output->error = QString::fromUtf8(proc->readAllStandardError()).trimmed();
+        finish();
+    });
+    connect(proc, &QProcess::errorOccurred, this, [finish](QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart)
+            finish();
+    });
+
+    setShareProgress(QString(), 0.0);
+    emit sharingChanged();
+    proc->start(program, {QStringLiteral("--json"), QStringLiteral("--name"), title, path});
 }

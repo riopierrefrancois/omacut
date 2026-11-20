@@ -35,11 +35,11 @@ The exit code is 0 or 1, and it copies the link to the clipboard itself (via wl-
 ## Tasks
 
 ### S1: backend
-- [ ] `Backend` gets:
+- [x] `Backend` gets:
   - Q_PROPERTYs `sharing` (bool), `shareStage` (QString: `""`, `"preparing"`, `"uploading"`), `sharePercent` (double 0–100) and `lastExport` (QString, the absolute path of the last successful export; set where `exportDone` is emitted).
   - signals `shareDone(QString link)` and `shareFailed(QString message)`
   - `Q_INVOKABLE void share(const QString &path, const QString &title)`
-- [ ] `share()`:
+- [x] `share()`:
   - Resolve the tool with `QStandardPaths::findExecutable("omashare")`. The env var `OMACUT_OMASHARE` overrides it, which is the test seam.
   - Missing tool: `shareFailed(tr("Install omashare to share links."))`.
   - Ignore the call while a share is running.
@@ -47,7 +47,7 @@ The exit code is 0 or 1, and it copies the link to the clipboard itself (via wl-
   - Parse stdout lines with `QJsonDocument`, using the line-buffer pattern of `exportClips` (backend.cpp, the `readyReadStandardOutput` handler).
   - On `done`, emit `shareDone(link)`. On `error`, or a non-zero exit with no `done`, emit `shareFailed` with the tool's message. If there is none, use `tr("Couldn't share the video.")`.
   - When the message says "Not signed in", replace it with `tr("Sign in to OmaShare first: run omashare login in a terminal.")`.
-- [ ] Unit tests with a fake `omashare` shell script (via `OMACUT_OMASHARE`) that prints progress, then done, and another that prints an error. Check the properties and signals, and that `--name` and the path arrive as separate arguments.
+- [x] Unit tests with a fake `omashare` shell script (via `OMACUT_OMASHARE`) that prints progress, then done, and another that prints an error. Check the properties and signals, and that `--name` and the path arrive as separate arguments.
 
 ### S2: the button
 - [ ] Add a **share** icon to `IconButton`'s `onPaint`: a simple link (two rounded chain links), drawn like the existing icons.

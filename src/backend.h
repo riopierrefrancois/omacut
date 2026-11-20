@@ -10,6 +10,7 @@
 #include "ffmpeg.h"
 #include "timeline.h"
 
+class QProcess;
 class ThumbProvider;
 class FilePicker;
 
@@ -24,6 +25,10 @@ class Backend : public QObject {
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(bool probing READ probing NOTIFY busyChanged)
     Q_PROPERTY(bool exporting READ exporting NOTIFY busyChanged)
+    Q_PROPERTY(bool sharing READ sharing NOTIFY sharingChanged)
+    Q_PROPERTY(QString shareStage READ shareStage NOTIFY shareProgressChanged)
+    Q_PROPERTY(double sharePercent READ sharePercent NOTIFY shareProgressChanged)
+    Q_PROPERTY(QString lastExport READ lastExport NOTIFY lastExportChanged)
     Q_PROPERTY(QString status READ status NOTIFY statusChanged)
     Q_PROPERTY(QObject *timeline READ timeline CONSTANT)
 
@@ -40,6 +45,10 @@ public:
     bool busy() const { return m_busy || m_probing; }
     bool probing() const { return m_probing; }
     bool exporting() const { return m_busy; }
+    bool sharing() const { return m_shareProcess != nullptr; }
+    QString shareStage() const { return m_shareStage; }
+    double sharePercent() const { return m_sharePercent; }
+    QString lastExport() const { return m_lastExport; }
     QString status() const { return m_status; }
     Timeline *timeline() { return &m_timeline; }
 
@@ -60,6 +69,7 @@ public:
     Q_INVOKABLE void addVideoDialog(double t);
     // Exports the clips as they are when the dialog opens.
     Q_INVOKABLE void exportDialog();
+    Q_INVOKABLE void share(const QString &path, const QString &title);
 
     // Suggested "<name>_trimmed.mp4" target next to the source.
     QUrl suggestedExportUrl() const;
@@ -83,6 +93,11 @@ signals:
     void videosChanged();
     void busyChanged();
     void statusChanged();
+    void sharingChanged();
+    void shareProgressChanged();
+    void lastExportChanged();
+    void shareDone(const QString &link);
+    void shareFailed(const QString &message);
     void exportDone(const QString &path);
     void exportFailed(const QString &message);
     void frameStepped(double from, double to);
@@ -98,6 +113,8 @@ signals:
     void skippedVideos(int count);
 
 private:
+    void finishExport(const QString &path);
+    void setShareProgress(const QString &stage, double percent);
     void setBusy(bool busy);
     void setStatus(const QString &status);
     void failExport(const QString &tmpPath, const QString &message);
@@ -155,4 +172,8 @@ private:
     // The hidden file a frame is being written to, until it's renamed.
     QString m_framePart;
     QString m_status;
+    QString m_lastExport;
+    QProcess *m_shareProcess = nullptr;
+    QString m_shareStage;
+    double m_sharePercent = 0.0;
 };

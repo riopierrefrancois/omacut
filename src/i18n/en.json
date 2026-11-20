@@ -83,5 +83,8 @@
   "Full screen (or double-click)": "Full screen (or double-click)",
   "Switch to edit mode": "Switch to edit mode",
   "Switch to view mode": "Switch to view mode",
-  "View (E)": "View (E)"
+  "View (E)": "View (E)",
+  "Install omashare to share links.": "Install omashare to share links.",
+  "Couldn't share the video.": "Couldn't share the video.",
+  "Sign in to OmaShare first: run omashare login in a terminal.": "Sign in to OmaShare first: run omashare login in a terminal."
 }
