@@ -68,8 +68,8 @@ The exit code is 0 or 1, and it copies the link to the clipboard itself (via wl-
 - [x] QML tests: the button's enabled rules in both modes, L triggers `share` with the right path, and the notice text on done and failed. Use the stub.
 
 ### S3: release
-- [ ] `pkg/PKGBUILD`: `pkgver=0.7.2.pf2`, and add `optdepends=('omashare: Share link button')`.
-- [ ] Build the package (`cd pkg && makepkg -f`). Don't install it.
+- [x] `pkg/PKGBUILD`: `pkgver=0.7.2.pf2`, and add `optdepends=('omashare: Share link button')`.
+- [x] Build the package (`cd pkg && makepkg -f`). Don't install it.
 
 ## Gate
 `bin/test` green, package built. Write the report to the path the orchestrator gives: commits, test output, anything this plan got wrong. Stop.
