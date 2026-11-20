@@ -40,6 +40,7 @@ Confirmations are answered from the keyboard: the arrows and Tab move between th
 - *Ctrl+O*: Open a new file to edit.
 - *Ctrl+Shift+O*: Add a video after the clip under the playhead.
 - *Ctrl+S*: Export the current edit.
+- *L*: Share the last export in edit mode or the open file in view mode.
 - *Q*: Quit (asks first if the edit hasn't been exported).
 - *?*: Show the hotkeys in the app.
 

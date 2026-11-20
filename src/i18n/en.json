@@ -86,5 +86,11 @@
   "View (E)": "View (E)",
   "Install omashare to share links.": "Install omashare to share links.",
   "Couldn't share the video.": "Couldn't share the video.",
-  "Sign in to OmaShare first: run omashare login in a terminal.": "Sign in to OmaShare first: run omashare login in a terminal."
+  "Sign in to OmaShare first: run omashare login in a terminal.": "Sign in to OmaShare first: run omashare login in a terminal.",
+  "Export first, then share": "Export first, then share",
+  "Link copied: %1": "Link copied: %1",
+  "Preparing link… %1%": "Preparing link… %1%",
+  "Share link": "Share link",
+  "Share link (L)": "Share link (L)",
+  "Uploading… %1%": "Uploading… %1%"
 }

@@ -50,22 +50,22 @@ The exit code is 0 or 1, and it copies the link to the clipboard itself (via wl-
 - [x] Unit tests with a fake `omashare` shell script (via `OMACUT_OMASHARE`) that prints progress, then done, and another that prints an error. Check the properties and signals, and that `--name` and the path arrive as separate arguments.
 
 ### S2: the button
-- [ ] Add a **share** icon to `IconButton`'s `onPaint`: a simple link (two rounded chain links), drawn like the existing icons.
-- [ ] **Edit mode:** a Share link button right after Export.
+- [x] Add a **share** icon to `IconButton`'s `onPaint`: a simple link (two rounded chain links), drawn like the existing icons.
+- [x] **Edit mode:** a Share link button right after Export.
   - Enabled when `backend.lastExport` is set, `!win.unexported` and `!backend.sharing`.
   - Shares `backend.lastExport`.
   - Tooltip: "Share link (L)". When disabled because nothing is exported: "Export first, then share".
-- [ ] **View mode:** a Share link button next to the pencil.
+- [x] **View mode:** a Share link button next to the pencil.
   - It shares the open file (local path of `backend.source`) when `!win.unexported`.
   - Title: the file name without its extension.
-- [ ] Shortcut **L** (`Qt.ApplicationShortcut`, same enabled guards as the other bare-letter shortcuts, plus the button's own rule).
+- [x] Shortcut **L** (`Qt.ApplicationShortcut`, same enabled guards as the other bare-letter shortcuts, plus the button's own rule).
   - Add it to the help overlay lists for both modes and to the README Hotkeys section.
-- [ ] Progress and results:
+- [x] Progress and results:
   - While sharing, the status line shows "Preparing link… 40%" or "Uploading… 80%".
   - `shareDone` → `win.showNotice(qsTr("Link copied: %1").arg(link))`.
   - `shareFailed` → `win.showNotice(message)`.
   - Export progress wins the status line if both run.
-- [ ] QML tests: the button's enabled rules in both modes, L triggers `share` with the right path, and the notice text on done and failed. Use the stub.
+- [x] QML tests: the button's enabled rules in both modes, L triggers `share` with the right path, and the notice text on done and failed. Use the stub.
 
 ### S3: release
 - [ ] `pkg/PKGBUILD`: `pkgver=0.7.2.pf2`, and add `optdepends=('omashare: Share link button')`.

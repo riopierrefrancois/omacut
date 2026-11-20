@@ -23,7 +23,11 @@ ApplicationWindow {
     property bool helpVisible: false
     property bool quitConfirmVisible: false
     property bool openConfirmVisible: false
-    readonly property string statusText: noticeText !== "" ? noticeText : backend.status
+    readonly property string shareStatus: backend.shareStage === "uploading"
+        ? qsTr("Uploading… %1%").arg(Math.round(backend.sharePercent))
+        : qsTr("Preparing link… %1%").arg(Math.round(backend.sharePercent))
+    readonly property string statusText: backend.sharing ? (backend.exporting ? backend.status : shareStatus)
+        : noticeText !== "" ? noticeText : backend.status
     // Right-to-left languages mirror the window; the Translator sets the
     // application's layout direction.
     readonly property bool rightToLeft: Qt.application.layoutDirection === Qt.RightToLeft
@@ -43,6 +47,14 @@ ApplicationWindow {
     // through, and nothing that changes it. E switches between the two;
     // `omacut --view` starts in it.
     property bool viewMode: false
+    readonly property string sharePath: viewMode ? backend.sourcePath : backend.lastExport
+    readonly property bool canShare: hasVideo && sharePath !== "" && !unexported && !backend.sharing
+
+    function shareVideo() {
+        var name = sharePath.substring(sharePath.lastIndexOf('/') + 1);
+        var extension = name.lastIndexOf('.');
+        backend.share(sharePath, extension > 0 ? name.substring(0, extension) : name);
+    }
     // The bar in use is held down, so playback must not move the playhead.
     readonly property bool scrubbing: viewMode ? viewBar.interacting : editBar.interacting
     // Moving around the video; editing also changes it, so not in view mode.
@@ -434,6 +446,14 @@ ApplicationWindow {
     }
 
     Shortcut {
+        sequence: "L"
+        context: Qt.ApplicationShortcut
+        autoRepeat: false
+        enabled: win.navigating && win.canShare
+        onActivated: win.shareVideo()
+    }
+
+    Shortcut {
         sequence: "Ctrl+O"
         context: Qt.ApplicationShortcut
         enabled: !win.overlayOpen && !backend.busy
@@ -736,6 +756,23 @@ ApplicationWindow {
                     ctx.moveTo(6, 20);
                     ctx.lineTo(18, 20);
                     ctx.stroke();
+                } else if (iconButton.iconName === "share") {
+                    ctx.save();
+                    ctx.translate(12, 12);
+                    ctx.rotate(-Math.PI / 4);
+                    ctx.beginPath();
+                    ctx.moveTo(-3, -3.5);
+                    ctx.lineTo(-6.5, -3.5);
+                    ctx.arc(-6.5, 0, 3.5, -Math.PI / 2, Math.PI / 2, true);
+                    ctx.lineTo(-3, 3.5);
+                    ctx.moveTo(3, 3.5);
+                    ctx.lineTo(6.5, 3.5);
+                    ctx.arc(6.5, 0, 3.5, Math.PI / 2, -Math.PI / 2, true);
+                    ctx.lineTo(3, -3.5);
+                    ctx.moveTo(-4, 0);
+                    ctx.lineTo(4, 0);
+                    ctx.stroke();
+                    ctx.restore();
                 } else if (iconButton.iconName === "edit") {
                     // A pencil.
                     ctx.beginPath();
@@ -960,6 +997,17 @@ ApplicationWindow {
                 enabled: timeline.duration > 0 && !backend.busy
                 onClicked: exportVideo()
             }
+
+            IconButton {
+                objectName: "shareButton"
+                Layout.preferredWidth: 44
+                Layout.preferredHeight: 44
+                iconName: "share"
+                enabled: win.canShare
+                tipText: !win.viewMode && (win.sharePath === "" || win.unexported)
+                    ? qsTr("Export first, then share") : qsTr("Share link (L)")
+                onClicked: win.shareVideo()
+            }
         }
 
         // --- status line ---
@@ -975,7 +1023,7 @@ ApplicationWindow {
                 // ffprobe's and ffmpeg's errors are shown as they are.
                 textFormat: Text.PlainText
                 text: win.statusText
-                color: win.noticeText !== "" ? win.accent : "#b8b8bc"
+                color: !backend.sharing && win.noticeText !== "" ? win.accent : "#b8b8bc"
                 font.pixelSize: 13
                 font.family: "monospace"
                 horizontalAlignment: Text.AlignHCenter
@@ -1119,6 +1167,7 @@ ApplicationWindow {
                         { keys: "F", action: qsTr("Full screen (or double-click)") },
                         { keys: "E", action: qsTr("Switch to edit mode") },
                         { keys: "Ctrl O", action: qsTr("Open a video") },
+                        { keys: "L", action: qsTr("Share link") },
                         { keys: "Q", action: qsTr("Quit") },
                         { keys: "?", action: qsTr("Show these shortcuts") }
                     ] : [
@@ -1140,6 +1189,7 @@ ApplicationWindow {
                         { keys: "Ctrl Shift O", action: qsTr("Add a video after this clip") },
                         { keys: "Ctrl S", action: qsTr("Export") },
                         { keys: "E", action: qsTr("Switch to view mode") },
+                        { keys: "L", action: qsTr("Share link") },
                         { keys: "Q", action: qsTr("Quit") },
                         { keys: "?", action: qsTr("Show these shortcuts") }
                     ]
@@ -1222,6 +1272,12 @@ ApplicationWindow {
             editBar.playheadSec = 0;
             if (win.hasVideo)
                 player.show(0, 0, false);
+        }
+        function onShareDone(link) {
+            win.showNotice(qsTr("Link copied: %1").arg(link));
+        }
+        function onShareFailed(message) {
+            win.showNotice(message);
         }
         function onExportDone(path) {
             win.showNotice(qsTr("Saved %1").arg(path));

@@ -20,6 +20,7 @@ class Backend : public QObject {
     Q_OBJECT
     // The first video, which names the project. The first clip's video sets the export's frame.
     Q_PROPERTY(QUrl source READ source NOTIFY infoChanged)
+    Q_PROPERTY(QString sourcePath READ sourcePath NOTIFY infoChanged)
     // Each video a clip can come from, by source index: {url, thumbKey}.
     Q_PROPERTY(QVariantList videos READ videoList NOTIFY videosChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
@@ -39,6 +40,7 @@ public:
     ~Backend() override;
 
     QUrl source() const { return m_videos.isEmpty() ? QUrl() : m_videos.first().url; }
+    QString sourcePath() const { return source().toLocalFile(); }
     QVariantList videoList() const;
     // Busy while exporting or while a probe is in flight: either way the
     // set of videos is about to change, so opening or adding must wait.

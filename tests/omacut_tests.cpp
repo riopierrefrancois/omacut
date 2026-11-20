@@ -139,6 +139,7 @@ static int nextThumbKey() {
 class ShortcutBackend : public QObject {
     Q_OBJECT
     Q_PROPERTY(QUrl source READ source NOTIFY infoChanged)
+    Q_PROPERTY(QString sourcePath READ sourcePath NOTIFY infoChanged)
     Q_PROPERTY(QVariantList videos READ videos NOTIFY videosChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(bool probing READ probing NOTIFY busyChanged)
@@ -159,6 +160,7 @@ public:
     }
 
     QUrl source() const { return m_source; }
+    QString sourcePath() const { return source().toLocalFile(); }
     QVariantList videos() const { return m_videos; }
     bool busy() const { return m_exporting; }
     bool probing() const { return false; }
@@ -166,12 +168,22 @@ public:
     void setExporting(bool exporting) {
         m_exporting = exporting;
         emit busyChanged();
+        emit statusChanged();
     }
-    bool sharing() const { return false; }
-    QString shareStage() const { return {}; }
-    double sharePercent() const { return 0.0; }
+    bool sharing() const { return m_sharing; }
+    QString shareStage() const { return m_shareStage; }
+    double sharePercent() const { return m_sharePercent; }
     QString lastExport() const { return m_lastExport; }
-    QString status() const { return {}; }
+    QString status() const { return m_exporting ? QStringLiteral("Exporting 60%") : QString(); }
+    void setSharing(bool sharing) {
+        m_sharing = sharing;
+        emit sharingChanged();
+    }
+    void setShareProgress(const QString &stage, double percent) {
+        m_shareStage = stage;
+        m_sharePercent = percent;
+        emit shareProgressChanged();
+    }
     QObject *timelineObject() { return &timeline; }
 
     Q_INVOKABLE void openVideoDialog() { ++openCount; }
@@ -183,7 +195,11 @@ public:
         ++exportCount;
         exportedClips = timeline.clips();
     }
-    Q_INVOKABLE void share(const QString &, const QString &) {}
+    Q_INVOKABLE void share(const QString &path, const QString &title) {
+        ++shareCount;
+        sharedPath = path;
+        sharedTitle = title;
+    }
     Q_INVOKABLE void saveFrame(double) {}
     Q_INVOKABLE void stepFrame(double t, int direction) { emit frameStepped(t, t + direction * 0.04); }
     Q_INVOKABLE bool addVideos(const QVariantList &, double) { return false; }
@@ -212,6 +228,9 @@ public:
     int addCount = 0;
     double lastAddAt = -1;
     int exportCount = 0;
+    int shareCount = 0;
+    QString sharedPath;
+    QString sharedTitle;
 
 signals:
     void infoChanged();
@@ -239,6 +258,9 @@ private:
     QVariantList m_videos;
     bool m_exporting = false;
     QString m_lastExport;
+    bool m_sharing = false;
+    QString m_shareStage;
+    double m_sharePercent = 0.0;
 };
 
 // All of the first video: what a freshly loaded one edits.
@@ -403,6 +425,7 @@ private slots:
     void qmlDropLandsAfterThePlayheadsClip();
     void qmlQuitConfirmsUnexportedEdit();
     void qmlQuitAsksWhileExporting();
+    void qmlShareLink();
     void qmlOpenConfirmsUnexportedEdit();
     void qmlHelpOverlayBlocksEditingKeys();
     void timelineSplitsTrimsAndJoins();
@@ -2288,6 +2311,69 @@ void BackendTests::formatTimeShowsHoursFromSixtyMinutes() {
     QCOMPARE(callFmt(3599.99), QStringLiteral("59:59.99"));
     QCOMPARE(callFmt(3599.999), QStringLiteral("01:00:00.00"));
     QCOMPARE(callFmt(3661.25), QStringLiteral("01:01:01.25"));
+}
+
+void BackendTests::qmlShareLink() {
+    const QString source = m_dir.filePath(QStringLiteral("A #100% demo.final.mp4"));
+    ShortcutBackend backend(QUrl::fromLocalFile(source), 20.0);
+    QmlHarness harness(backend);
+    QQuickWindow *window = showEditor(harness, backend);
+    QVERIFY(window);
+    auto *button = window->findChild<QQuickItem *>(QStringLiteral("shareButton"));
+    QVERIFY(button && button->isVisible());
+    QVERIFY(!button->isEnabled());
+    QCOMPARE(button->property("tipText").toString(), QStringLiteral("Export first, then share"));
+    QTest::keyClick(window, Qt::Key_L);
+    QCOMPARE(backend.shareCount, 0);
+
+    backend.exportDialog();
+    backend.announceExportDone();
+    QVERIFY(button->isEnabled());
+    QTest::keyClick(window, Qt::Key_L);
+    QCOMPARE(backend.shareCount, 1);
+    QCOMPARE(backend.sharedPath, backend.lastExport());
+    QCOMPARE(backend.sharedTitle, QStringLiteral("exported"));
+
+    backend.timeline.trimTo(10.0, true);
+    QVERIFY(!button->isEnabled());
+    window->setProperty("viewMode", true);
+    QVERIFY(!button->isEnabled());
+    QTest::keyClick(window, Qt::Key_L);
+    QCOMPARE(backend.shareCount, 1);
+    backend.timeline.undo();
+    QVERIFY(button->isEnabled());
+    QCOMPARE(button->property("tipText").toString(), QStringLiteral("Share link (L)"));
+    QTest::keyClick(window, Qt::Key_L);
+    QCOMPARE(backend.shareCount, 2);
+    QCOMPARE(backend.sharedPath, source);
+    QCOMPARE(backend.sharedTitle, QStringLiteral("A #100% demo.final"));
+
+    window->setProperty("helpVisible", true);
+    QTest::keyClick(window, Qt::Key_L);
+    QCOMPARE(backend.shareCount, 2);
+    window->setProperty("helpVisible", false);
+
+    backend.setSharing(true);
+    QVERIFY(!button->isEnabled());
+    QTest::keyClick(window, Qt::Key_L);
+    QCOMPARE(backend.shareCount, 2);
+    window->setProperty("viewMode", false);
+    QVERIFY(!button->isEnabled());
+
+    backend.setShareProgress(QStringLiteral("preparing"), 39.5);
+    QCOMPARE(window->property("statusText").toString(), QStringLiteral("Preparing link… 40%"));
+    backend.setShareProgress(QStringLiteral("uploading"), 80);
+    QCOMPARE(window->property("statusText").toString(), QStringLiteral("Uploading… 80%"));
+    backend.setExporting(true);
+    QCOMPARE(window->property("statusText").toString(), QStringLiteral("Exporting 60%"));
+    backend.setExporting(false);
+    backend.setSharing(false);
+    QVERIFY(button->isEnabled());
+
+    emit backend.shareDone(QStringLiteral("https://share.example.com/s/video"));
+    QCOMPARE(window->property("noticeText").toString(), QStringLiteral("Link copied: https://share.example.com/s/video"));
+    emit backend.shareFailed(QStringLiteral("Upload failed"));
+    QCOMPARE(window->property("noticeText").toString(), QStringLiteral("Upload failed"));
 }
 
 void BackendTests::qmlQuitAsksWhileExporting() {
