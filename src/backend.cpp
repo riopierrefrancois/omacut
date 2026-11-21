@@ -166,6 +166,7 @@ void Backend::applyProbe(const PendingVideo &pending, const ffmpeg::VideoInfo &i
             ++m_batchAdded;
 
         if (!pending.adding || m_videos.isEmpty()) {
+            setLastExport(QString());
             m_videos = {video};
             m_timeline.reset(video.info.duration);
             emit videosChanged();
@@ -606,11 +607,15 @@ void Backend::failExport(const QString &tmpPath, const QString &message) {
 
 void Backend::finishExport(const QString &path) {
     const QString absolutePath = QFileInfo(path).absoluteFilePath();
-    if (m_lastExport != absolutePath) {
-        m_lastExport = absolutePath;
-        emit lastExportChanged();
-    }
+    setLastExport(absolutePath);
     emit exportDone(absolutePath);
+}
+
+void Backend::setLastExport(const QString &path) {
+    if (m_lastExport == path)
+        return;
+    m_lastExport = path;
+    emit lastExportChanged();
 }
 
 void Backend::setShareProgress(const QString &stage, double percent) {

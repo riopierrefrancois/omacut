@@ -116,6 +116,7 @@ signals:
 
 private:
     void finishExport(const QString &path);
+    void setLastExport(const QString &path);
     void setShareProgress(const QString &stage, double percent);
     void setBusy(bool busy);
     void setStatus(const QString &status);

@@ -380,6 +380,8 @@ private slots:
     void exportDialogDelegatesSuggestedUrl();
     void suggestedExportUrlAlwaysUsesMp4();
     void exportClipWritesMp4();
+    void openingVideoClearsLastExport_data();
+    void openingVideoClearsLastExport();
     void shareRunsOmaShare_data();
     void shareRunsOmaShare();
     void frameStepsFollowPresentationTimes();
@@ -1373,6 +1375,49 @@ void BackendTests::exportJoinsDifferentVideos() {
     QVERIFY2(qAbs(info.duration - 3.0) < 0.2, qPrintable(QString::number(info.duration)));
 }
 
+void BackendTests::openingVideoClearsLastExport_data() {
+    QTest::addColumn<bool>("sameVideo");
+    QTest::newRow("different video") << false;
+    QTest::newRow("same video replaces the edit") << true;
+}
+
+void BackendTests::openingVideoClearsLastExport() {
+    QFETCH(bool, sameVideo);
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString otherPath = dir.filePath(QStringLiteral("share-other-source.mp4"));
+    QVERIFY(QFile::copy(m_videoPath, otherPath));
+
+    ThumbProvider provider;
+    Backend backend(&provider, new FakeFilePicker);
+    QVERIFY(backend.load(videoUrl()));
+    waitForProbe(backend);
+
+    const QString exportPath = dir.filePath(QStringLiteral("share-previous-export.mp4"));
+    QSignalSpy exported(&backend, &Backend::exportDone);
+    QSignalSpy changed(&backend, &Backend::lastExportChanged);
+    backend.exportClips(QUrl::fromLocalFile(exportPath), wholeVideo(1.0));
+    QTRY_COMPARE_WITH_TIMEOUT(exported.size(), 1, 20000);
+    QCOMPARE(backend.lastExport(), exportPath);
+    QCOMPARE(changed.size(), 1);
+
+    QSignalSpy failed(&backend, &Backend::loadError);
+    QVERIFY(backend.load(QUrl::fromLocalFile(m_dir.filePath(QStringLiteral("share-missing.mp4")))));
+    waitForProbe(backend);
+    QCOMPARE(failed.size(), 1);
+    QCOMPARE(backend.lastExport(), exportPath);
+    QCOMPARE(changed.size(), 1);
+
+    const QUrl replacement = sameVideo ? videoUrl() : QUrl::fromLocalFile(otherPath);
+    QSignalSpy opened(&backend, &Backend::infoChanged);
+    QVERIFY(backend.load(replacement));
+    waitForProbe(backend);
+    QCOMPARE(backend.source(), replacement);
+    QCOMPARE(opened.size(), 1);
+    QVERIFY(backend.lastExport().isEmpty());
+    QCOMPARE(changed.size(), 2);
+}
+
 void BackendTests::exportClipCanReplaceSourceFile() {
     const QString sourcePath = m_dir.filePath(QStringLiteral("replace-source.mp4"));
     QVERIFY(QFile::copy(m_videoPath, sourcePath));
@@ -1395,6 +1440,7 @@ void BackendTests::exportClipCanReplaceSourceFile() {
     QCOMPARE(failedSpy.count(), 0);
     QCOMPARE(doneSpy.count(), 1);
     QCOMPARE(doneSpy.first().at(0).toString(), sourcePath);
+    QCOMPARE(backend.lastExport(), sourcePath);
     QVERIFY(QFileInfo::exists(sourcePath));
     QVERIFY(ffmpeg::probe(sourcePath).ok);
     QVERIFY2(formatName(sourcePath).contains(QStringLiteral("mp4")),
