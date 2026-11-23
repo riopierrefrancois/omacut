@@ -1,6 +1,6 @@
 # Local build of omacut with PF's view mode (branch pf/view-mode), over the stock package.
 pkgname=omacut
-pkgver=0.7.2.pf2
+pkgver=0.7.2.pf3
 pkgrel=1
 pkgdesc='Dead-simple video length trimmer built with Qt Quick and ffmpeg (with a view mode)'
 arch=('x86_64' 'aarch64')
@@ -8,7 +8,8 @@ url='https://github.com/omacom/omacut'
 license=('MIT')
 options=('!debug')
 depends=('ffmpeg' 'hicolor-icon-theme' 'qt6-base' 'qt6-declarative' 'qt6-multimedia' 'xdg-desktop-portal')
-optdepends=('omashare: Share link button')
+optdepends=('omashare: Share link button'
+            'omaedit: Open in Omaedit button')
 makedepends=('cmake')
 
 build() {
