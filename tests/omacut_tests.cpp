@@ -150,6 +150,7 @@ class ShortcutBackend : public QObject {
     Q_PROPERTY(QString lastExport READ lastExport NOTIFY lastExportChanged)
     Q_PROPERTY(QString status READ status NOTIFY statusChanged)
     Q_PROPERTY(QObject *timeline READ timelineObject CONSTANT)
+    Q_PROPERTY(bool omaeditAvailable MEMBER omaeditAvailable CONSTANT)
 
 public:
     explicit ShortcutBackend(QUrl source, double duration, QObject *parent = nullptr)
@@ -200,6 +201,10 @@ public:
         sharedPath = path;
         sharedTitle = title;
     }
+    Q_INVOKABLE bool openInOmaedit() {
+        ++omaeditCount;
+        return omaeditStarts;
+    }
     Q_INVOKABLE void saveFrame(double) {}
     Q_INVOKABLE void stepFrame(double t, int direction) { emit frameStepped(t, t + direction * 0.04); }
     Q_INVOKABLE bool addVideos(const QVariantList &, double) { return false; }
@@ -231,6 +236,10 @@ public:
     int shareCount = 0;
     QString sharedPath;
     QString sharedTitle;
+    // Set before the window is made: QML reads it once.
+    bool omaeditAvailable = false;
+    bool omaeditStarts = true;
+    int omaeditCount = 0;
 
 signals:
     void infoChanged();
@@ -384,6 +393,7 @@ private slots:
     void openingVideoClearsLastExport();
     void shareRunsOmaShare_data();
     void shareRunsOmaShare();
+    void openInOmaeditOpensEveryVideo();
     void frameStepsFollowPresentationTimes();
     void frameStepFailuresHaveTheirOwnNotice();
     void saveFrameWritesPngBesideTheSource();
@@ -428,6 +438,7 @@ private slots:
     void qmlQuitConfirmsUnexportedEdit();
     void qmlQuitAsksWhileExporting();
     void qmlShareLink();
+    void qmlOpenInOmaedit();
     void qmlOpenConfirmsUnexportedEdit();
     void qmlHelpOverlayBlocksEditingKeys();
     void timelineSplitsTrimsAndJoins();
@@ -1151,6 +1162,51 @@ printf '%s\n' '{"event":"progress","stage":"uploading","percent":81.2}'
         QCOMPARE(done.first().first().toString(), link);
     else
         QCOMPARE(failed.first().first().toString(), failure);
+}
+
+void BackendTests::openInOmaeditOpensEveryVideo() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString log = dir.filePath(QStringLiteral("omaedit.log"));
+    QFile script(dir.filePath(QStringLiteral("fake omaedit")));
+    QVERIFY(script.open(QIODevice::WriteOnly));
+    script.write("#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$OMAEDIT_FAKE_LOG.tmp\" && mv \"$OMAEDIT_FAKE_LOG.tmp\" \"$OMAEDIT_FAKE_LOG\"\n");
+    script.close();
+    QVERIFY(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+    const QString otherPath = dir.filePath(QStringLiteral("second video.mp4"));
+    QVERIFY(QFile::copy(m_videoPath, otherPath));
+
+    const EnvVarGuard override("OMACUT_OMAEDIT");
+    const EnvVarGuard logPath("OMAEDIT_FAKE_LOG");
+    qputenv("OMAEDIT_FAKE_LOG", QFile::encodeName(log));
+    {
+        // Set but empty: as if Omaedit were not installed.
+        qputenv("OMACUT_OMAEDIT", QByteArray());
+        ThumbProvider provider;
+        Backend backend(&provider, new FakeFilePicker);
+        QVERIFY(!backend.omaeditAvailable());
+        QVERIFY(backend.load(videoUrl()));
+        waitForProbe(backend);
+        QVERIFY(!backend.openInOmaedit());
+    }
+
+    qputenv("OMACUT_OMAEDIT", QFile::encodeName(script.fileName()));
+    ThumbProvider provider;
+    Backend backend(&provider, new FakeFilePicker);
+    QVERIFY(backend.omaeditAvailable());
+    QVERIFY(!backend.openInOmaedit()); // No video yet.
+    QVERIFY(backend.load(videoUrl()));
+    waitForProbe(backend);
+    QVERIFY(backend.addVideo(QUrl::fromLocalFile(otherPath), 0.5));
+    waitForProbe(backend);
+    QCOMPARE(backend.videoList().size(), 2);
+
+    QVERIFY(backend.openInOmaedit());
+    QTRY_VERIFY(QFile::exists(log));
+    QFile written(log);
+    QVERIFY(written.open(QIODevice::ReadOnly));
+    QCOMPARE(QString::fromUtf8(written.readAll()),
+             QStringLiteral("open\n%1\n%2\n").arg(m_videoPath, otherPath));
 }
 
 void BackendTests::exportClipWritesMp4() {
@@ -2357,6 +2413,44 @@ void BackendTests::formatTimeShowsHoursFromSixtyMinutes() {
     QCOMPARE(callFmt(3599.99), QStringLiteral("59:59.99"));
     QCOMPARE(callFmt(3599.999), QStringLiteral("01:00:00.00"));
     QCOMPARE(callFmt(3661.25), QStringLiteral("01:01:01.25"));
+}
+
+void BackendTests::qmlOpenInOmaedit() {
+    const QString source = m_dir.filePath(QStringLiteral("omaedit source.mp4"));
+    {
+        ShortcutBackend backend(QUrl::fromLocalFile(source), 20.0);
+        QmlHarness harness(backend);
+        QQuickWindow *window = showEditor(harness, backend);
+        QVERIFY(window);
+        auto *button = window->findChild<QQuickItem *>(QStringLiteral("omaeditButton"));
+        QVERIFY(button);
+        QVERIFY(!button->isVisible()); // Omaedit isn't installed.
+    }
+
+    ShortcutBackend backend(QUrl::fromLocalFile(source), 20.0);
+    backend.omaeditAvailable = true;
+    QmlHarness harness(backend);
+    QQuickWindow *window = showEditor(harness, backend);
+    QVERIFY(window);
+    auto *button = window->findChild<QQuickItem *>(QStringLiteral("omaeditButton"));
+    QVERIFY(button && button->isVisible() && button->isEnabled());
+    QCOMPARE(button->property("tipText").toString(), QStringLiteral("Open in Omaedit"));
+
+    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, itemCenter(button));
+    QCOMPARE(backend.omaeditCount, 1);
+    QCOMPARE(window->property("noticeText").toString(), QStringLiteral("Opening in Omaedit…"));
+
+    // Cuts made here don't go to Omaedit, and the button says so.
+    backend.timeline.trimTo(10.0, true);
+    QCOMPARE(button->property("tipText").toString(),
+             QStringLiteral("Open the full videos in Omaedit (your cuts here aren't carried over)"));
+    window->setProperty("viewMode", true);
+    QCOMPARE(button->property("tipText").toString(), QStringLiteral("Open in Omaedit"));
+
+    backend.omaeditStarts = false;
+    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, itemCenter(button));
+    QCOMPARE(backend.omaeditCount, 2);
+    QCOMPARE(window->property("noticeText").toString(), QStringLiteral("Couldn't open Omaedit."));
 }
 
 void BackendTests::qmlShareLink() {

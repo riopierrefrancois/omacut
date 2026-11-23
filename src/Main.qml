@@ -773,6 +773,26 @@ ApplicationWindow {
                     ctx.lineTo(4, 0);
                     ctx.stroke();
                     ctx.restore();
+                } else if (iconButton.iconName === "omaedit") {
+                    // A box with an arrow leaving it.
+                    ctx.beginPath();
+                    ctx.moveTo(11, 5);
+                    ctx.lineTo(6, 5);
+                    ctx.quadraticCurveTo(5, 5, 5, 6);
+                    ctx.lineTo(5, 18);
+                    ctx.quadraticCurveTo(5, 19, 6, 19);
+                    ctx.lineTo(18, 19);
+                    ctx.quadraticCurveTo(19, 19, 19, 18);
+                    ctx.lineTo(19, 13);
+                    ctx.stroke();
+
+                    ctx.beginPath();
+                    ctx.moveTo(11, 13);
+                    ctx.lineTo(19.5, 4.5);
+                    ctx.moveTo(14, 4.5);
+                    ctx.lineTo(19.5, 4.5);
+                    ctx.lineTo(19.5, 10);
+                    ctx.stroke();
                 } else if (iconButton.iconName === "edit") {
                     // A pencil.
                     ctx.beginPath();
@@ -1007,6 +1027,21 @@ ApplicationWindow {
                 tipText: !win.viewMode && (win.sharePath === "" || win.unexported)
                     ? qsTr("Export first, then share") : qsTr("Share link (L)")
                 onClicked: win.shareVideo()
+            }
+
+            IconButton {
+                objectName: "omaeditButton"
+                visible: backend.omaeditAvailable
+                Layout.preferredWidth: 44
+                Layout.preferredHeight: 44
+                iconName: "omaedit"
+                enabled: win.hasVideo && !backend.probing
+                // Omaedit gets the videos themselves: cuts made here stay here.
+                tipText: !win.viewMode && win.unexported
+                    ? qsTr("Open the full videos in Omaedit (your cuts here aren't carried over)")
+                    : qsTr("Open in Omaedit")
+                onClicked: win.showNotice(backend.openInOmaedit()
+                    ? qsTr("Opening in Omaedit…") : qsTr("Couldn't open Omaedit."))
             }
         }
 

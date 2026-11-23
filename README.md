@@ -16,6 +16,7 @@ The timeline shows your clips in the order they play, each framed with a handle 
 - **Hold a clip, then drag it** to move it before or after the others.
 - **Hover a clip** and click its **×** to remove it.
 - **Click +** to add another video after the clip under the playhead.
+- **Click Open in Omaedit** (the box with an arrow, shown when Omaedit is installed) to carry on in Omaedit. It gets the full videos, in the order you added them, as a new edit; cuts made here stay here.
 
 Handles catch on neighbouring clip edges and the playhead.
 

@@ -92,5 +92,9 @@
   "Preparing link… %1%": "Preparing link… %1%",
   "Share link": "Share link",
   "Share link (L)": "Share link (L)",
-  "Uploading… %1%": "Uploading… %1%"
+  "Uploading… %1%": "Uploading… %1%",
+  "Open in Omaedit": "Open in Omaedit",
+  "Open the full videos in Omaedit (your cuts here aren't carried over)": "Open the full videos in Omaedit (your cuts here aren't carried over)",
+  "Opening in Omaedit…": "Opening in Omaedit…",
+  "Couldn't open Omaedit.": "Couldn't open Omaedit."
 }

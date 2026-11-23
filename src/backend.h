@@ -30,6 +30,8 @@ class Backend : public QObject {
     Q_PROPERTY(QString shareStage READ shareStage NOTIFY shareProgressChanged)
     Q_PROPERTY(double sharePercent READ sharePercent NOTIFY shareProgressChanged)
     Q_PROPERTY(QString lastExport READ lastExport NOTIFY lastExportChanged)
+    // Whether Omaedit is installed, for the Open in Omaedit button.
+    Q_PROPERTY(bool omaeditAvailable READ omaeditAvailable CONSTANT)
     Q_PROPERTY(QString status READ status NOTIFY statusChanged)
     Q_PROPERTY(QObject *timeline READ timeline CONSTANT)
 
@@ -51,6 +53,7 @@ public:
     QString shareStage() const { return m_shareStage; }
     double sharePercent() const { return m_sharePercent; }
     QString lastExport() const { return m_lastExport; }
+    bool omaeditAvailable() const { return !m_omaeditProgram.isEmpty(); }
     QString status() const { return m_status; }
     Timeline *timeline() { return &m_timeline; }
 
@@ -72,6 +75,10 @@ public:
     // Exports the clips as they are when the dialog opens.
     Q_INVOKABLE void exportDialog();
     Q_INVOKABLE void share(const QString &path, const QString &title);
+    // Opens every video, in the order they were added, in Omaedit (`omaedit open`), which
+    // keeps running on its own. False when Omaedit is missing, there is no video, or it did
+    // not start.
+    Q_INVOKABLE bool openInOmaedit();
 
     // Suggested "<name>_trimmed.mp4" target next to the source.
     QUrl suggestedExportUrl() const;
@@ -176,6 +183,8 @@ private:
     QString m_framePart;
     QString m_status;
     QString m_lastExport;
+    // OMACUT_OMAEDIT, else omaedit on the PATH; empty when neither is there.
+    QString m_omaeditProgram;
     QProcess *m_shareProcess = nullptr;
     QString m_shareStage;
     double m_sharePercent = 0.0;

@@ -46,7 +46,9 @@ Backend::Backend(ThumbProvider *provider, QObject *parent)
     : Backend(provider, new PortalFilePicker(), parent) {}
 
 Backend::Backend(ThumbProvider *provider, FilePicker *filePicker, QObject *parent)
-    : QObject(parent), m_provider(provider), m_filePicker(filePicker) {
+    : QObject(parent), m_provider(provider), m_filePicker(filePicker),
+      m_omaeditProgram(qEnvironmentVariable("OMACUT_OMAEDIT",
+          QStandardPaths::findExecutable(QStringLiteral("omaedit")))) {
     if (!m_filePicker->parent())
         m_filePicker->setParent(this);
     wireFilePicker();
@@ -624,6 +626,20 @@ void Backend::setShareProgress(const QString &stage, double percent) {
     m_shareStage = stage;
     m_sharePercent = percent;
     emit shareProgressChanged();
+}
+
+bool Backend::openInOmaedit() {
+    if (m_omaeditProgram.isEmpty())
+        return false;
+    QStringList arguments{QStringLiteral("open")};
+    for (const Video &video : std::as_const(m_videos)) {
+        const QString path = video.url.toLocalFile();
+        if (!path.isEmpty() && !arguments.contains(path))
+            arguments.append(path);
+    }
+    if (arguments.size() == 1)
+        return false;
+    return QProcess::startDetached(m_omaeditProgram, arguments);
 }
 
 void Backend::share(const QString &path, const QString &title) {
